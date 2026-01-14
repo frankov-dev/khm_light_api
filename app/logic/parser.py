@@ -3,16 +3,26 @@ from datetime import datetime
 
 class OutageParser:
     def __init__(self):
-        # Патерни для дати та підчерг
-        self.date_p = r"відключень на (\d{2}\.\d{2}\.\d{4})"
+        # Патерни
+        self.date_text_p = r"на (\d{2}\.\d{2}\.\d{4})"
+        self.date_alt_p = r"ГПВ-(\d{2}\.\d{2}\.\d{2})"
         self.base_p = r"підчерга (\d\.\d) [–—-] з (.+?)(?:;|\.|$)"
         self.time_p = r"(\d{2}:\d{2})\s+до\s+(\d{2}:\d{2})"
 
-    def extract_date(self, text):
-        match = re.search(self.date_p, text)
-        if match:
-            return datetime.strptime(match.group(1), "%d.%m.%Y").strftime("%Y-%m-%d")
-        return None
+    def extract_dates(self, text, alts):
+        """Шукає всі дати на сторінці"""
+        dates = set()
+        # З тексту заголовків
+        for d in re.findall(self.date_text_p, text):
+            dates.add(datetime.strptime(d, "%d.%m.%Y").strftime("%Y-%m-%d"))
+        
+        # З alt-текстів картинок (напр. ГПВ-15.01.26)
+        for alt in alts:
+            match = re.search(self.date_alt_p, alt)
+            if match:
+                d_obj = datetime.strptime(match.group(1), "%d.%m.%y")
+                dates.add(d_obj.strftime("%Y-%m-%d"))
+        return list(dates)
 
     def parse_content(self, text):
         results = {}
@@ -21,22 +31,9 @@ class OutageParser:
             times = re.findall(self.time_p, hours)
             results[q] = [{"start": t[0], "end": t[1], "type": "base"} for t in times]
         
-        # Оперативні зміни: додатково, раніше, довше
+        # Оперативні зміни
         extra_p = r"підчергу (\d\.\d)\.? додатково.+?з (\d{2}:\d{2}) до (\d{2}:\d{2})"
-        earlier_p = r"підчерги (\d\.\d)\.? відключення розпочнеться раніше – о[б]? (\d{2}:\d{2})"
-        longer_p = r"підчерги (\d\.\d)\.? відключення триватиме довше – до (\d{2}:\d{2})"
-
         for q, s, e in re.findall(extra_p, text):
             if q in results: results[q].append({"start": s, "end": e, "type": "extra"})
         
-        for q, ns in re.findall(earlier_p, text):
-            if q in results:
-                results[q][0]["start"] = ns
-                results[q][0]["type"] = "change"
-
-        for q, ne in re.findall(longer_p, text):
-            if q in results:
-                results[q][-1]["end"] = ne
-                results[q][-1]["type"] = "change"
-
         return results

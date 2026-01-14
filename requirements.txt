@@ -4,4 +4,3 @@ python-dotenv
 pydantic
 requests
 beautifulsoup4
-mysql-connector-python

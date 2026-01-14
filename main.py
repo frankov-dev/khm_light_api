@@ -11,7 +11,7 @@ db = DatabaseHandler()
 @app.get("/update")
 def trigger_update():
     """Стягує дані з сайту і оновлює базу"""
-    res = service.update_from_web()
+    res = service.update()
     return {"status": "success", "date": res} if res else {"status": "error"}
 
 @app.get("/schedule/{queue}")
