@@ -1,7 +1,8 @@
+# === Python ===
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
-.pyc
 *$py.class
 
 # C extensions
@@ -98,7 +99,8 @@ celerybeat.pid
 
 # Environments
 .env
-.venv
+.env.*
+.venv/
 env/
 venv/
 ENV/
@@ -123,17 +125,24 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-# IDE
+# === IDE / Editor ===
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+
+# === OS ===
 .DS_Store
 Thumbs.db
+Desktop.ini
 
-# Project specific
+# === Project specific ===
 *.db
 *.sqlite
 outages.db
+
+# Logs
+*.log
+logs/
 config.local.py

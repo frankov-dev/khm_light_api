@@ -1,5 +1,9 @@
 # Khmelnytskyi Outage API
 
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green.svg)](https://fastapi.tiangolo.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 API для моніторингу графіків погодинних відключень електроенергії у Хмельницькому.
 
 Дані з офіційного сайту [hoe.com.ua](https://hoe.com.ua/page/pogodinni-vidkljuchennja) (Хмельницькобленерго).
@@ -7,6 +11,15 @@ API для моніторингу графіків погодинних відк
 ## 🚀 Швидкий старт
 
 ```bash
+# Клонування репозиторію
+git clone https://github.com/username/khm-outage-monitor.git
+cd khm-outage-monitor
+
+# Створення віртуального середовища
+python -m venv .venv
+.venv\Scripts\activate  # Windows
+# source .venv/bin/activate  # Linux/macOS
+
 # Встановлення залежностей
 pip install -r requirements.txt
 
@@ -15,6 +28,25 @@ python main.py
 ```
 
 Сервер буде доступний за адресою: http://localhost:8000
+
+### Розробка
+
+```bash
+# Встановлення dev-залежностей
+pip install -e ".[dev]"
+
+# Запуск з автоперезавантаженням
+uvicorn main:app --reload
+
+# Запуск тестів
+pytest
+
+# Перевірка коду (linting)
+ruff check .
+
+# Перевірка типів
+mypy .
+```
 
 ## 📚 API Endpoints
 
@@ -80,6 +112,30 @@ GET /dates
 - **Swagger UI:** http://localhost:8000/docs
 - **ReDoc:** http://localhost:8000/redoc
 
+## 🧪 Тестування
+
+Проєкт містить 28 unit тестів для API:
+
+```bash
+# Запуск всіх тестів
+pytest tests/ -v
+
+# Запуск з coverage
+pytest tests/ -v --cov=app --cov=main
+```
+
+**Тестові категорії:**
+- `TestHealthCheck` — перевірка /status endpoint
+- `TestScheduleEndpoints` — тести для /schedule/{queue}
+- `TestAllSchedulesEndpoint` — тести для /all/{day}
+- `TestDatesEndpoint` — тести для /dates
+- `TestUpdateEndpoint` — тести оновлення з мокованим scraper
+- `TestResponseFormat` — перевірка формату відповідей для "СВІТЛО" інтеграції
+- `TestTotalHoursCalculation` — тести підрахунку годин
+- `TestEdgeCases` — edge cases (минулі/майбутні дати, спец. символи)
+- `TestCORS` — перевірка CORS headers
+- `TestDocumentation` — доступність OpenAPI/Swagger/ReDoc
+
 ## 🗂️ Структура проєкту
 
 ```
@@ -87,6 +143,9 @@ khm_outage_monitor/
 ├── main.py                 # FastAPI додаток
 ├── requirements.txt        # Залежності
 ├── outages.db             # SQLite база даних
+├── tests/
+│   ├── conftest.py        # Pytest конфігурація
+│   └── test_api.py        # Unit тести API
 └── app/
     ├── core/
     │   └── models.py      # Pydantic моделі
@@ -118,8 +177,20 @@ SQLite з таблицями:
 - **FastAPI** — веб-фреймворк
 - **SQLite** — база даних
 - **BeautifulSoup4** — парсинг HTML
+- **pytest** — тестування
 - **Requests** — HTTP-запити
 - **Uvicorn** — ASGI сервер
+- **zoneinfo** — підтримка часових поясів (Europe/Kyiv)
+
+## ⏰ Часовий пояс
+
+API використовує київський час (`Europe/Kyiv`) для визначення поточної дати.
+Це важливо при розгортанні на серверах в інших часових поясах (AWS, GCP тощо).
+
+```python
+from zoneinfo import ZoneInfo
+KYIV_TZ = ZoneInfo("Europe/Kyiv")
+```
 
 ## 📱 Інтеграція
 
@@ -136,6 +207,23 @@ console.log(`Черга ${data.queue}: ${data.total_hours_off} год. без с
 data.intervals.forEach(i => console.log(`  ${i.start} - ${i.end}`));
 ```
 
+### Приклад запиту (Python)
+```python
+import requests
+
+response = requests.get("http://localhost:8000/schedule/3.1")
+data = response.json()
+
+print(f"Черга {data['queue']}: {data['total_hours_off']} год. без світла")
+for interval in data["intervals"]:
+    print(f"  {interval['start']} - {interval['end']}")
+```
+
 ## 📝 Ліцензія
 
-MIT
+MIT — дивіться файл [LICENSE](LICENSE) для деталей.
+
+---
+
+**Автор:** Франков Дмитро
+**Джерело даних:** [hoe.com.ua](https://hoe.com.ua) (Хмельницькобленерго)

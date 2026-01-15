@@ -19,9 +19,19 @@ class Database:
         - schedules: Outage intervals per queue/date
         - daily_messages: Operational messages per date (general, not per-queue)
         - metadata: System metadata (last_updated, etc.)
+    
+    Thread Safety:
+        Creates a new connection for each operation to ensure thread safety
+        when used with FastAPI's async request handling.
     """
     
-    def __init__(self, db_path: str = "outages.db"):
+    def __init__(self, db_path: str = "outages.db") -> None:
+        """
+        Initialize database.
+        
+        Args:
+            db_path: Path to SQLite database file.
+        """
         self.db_path = db_path
         self._init_db()
     
@@ -121,8 +131,17 @@ class Database:
             )
             conn.commit()
     
-    def get_schedule(self, queue: str, date: str) -> list:
-        """Get schedule intervals for a queue on a specific date."""
+    def get_schedule(self, queue: str, date: str) -> list[dict]:
+        """
+        Get schedule intervals for a queue on a specific date.
+        
+        Args:
+            queue: Queue name (e.g., "3.1")
+            date: Date in YYYY-MM-DD format
+        
+        Returns:
+            List of dicts with start_time, end_time, type keys.
+        """
         with self._connect() as conn:
             cursor = conn.execute(
                 """SELECT start_time, end_time, type FROM schedules
@@ -133,8 +152,16 @@ class Database:
             )
             return [dict(row) for row in cursor.fetchall()]
     
-    def get_all_schedules(self, date: str) -> dict:
-        """Get all schedules for a specific date."""
+    def get_all_schedules(self, date: str) -> dict[str, list[dict]]:
+        """
+        Get all schedules for a specific date.
+        
+        Args:
+            date: Date in YYYY-MM-DD format
+        
+        Returns:
+            Dict mapping queue names to lists of intervals.
+        """
         with self._connect() as conn:
             cursor = conn.execute(
                 """SELECT queues.name as queue, start_time, end_time, type
@@ -158,7 +185,15 @@ class Database:
             return result
     
     def get_message(self, date: str) -> Optional[str]:
-        """Get operational message for a date."""
+        """
+        Get operational message for a date.
+        
+        Args:
+            date: Date in YYYY-MM-DD format
+        
+        Returns:
+            Message text or None if not found.
+        """
         with self._connect() as conn:
             cursor = conn.execute(
                 "SELECT message FROM daily_messages WHERE day_date = ?",
@@ -167,8 +202,13 @@ class Database:
             row = cursor.fetchone()
             return row["message"] if row else None
     
-    def get_dates(self) -> list:
-        """Get list of available dates."""
+    def get_dates(self) -> list[str]:
+        """
+        Get list of available dates.
+        
+        Returns:
+            List of dates in YYYY-MM-DD format, sorted descending.
+        """
         with self._connect() as conn:
             cursor = conn.execute(
                 "SELECT DISTINCT day_date FROM schedules ORDER BY day_date DESC"
@@ -176,7 +216,15 @@ class Database:
             return [row["day_date"] for row in cursor.fetchall()]
     
     def get_metadata(self, key: str) -> Optional[str]:
-        """Get metadata value by key."""
+        """
+        Get metadata value by key.
+        
+        Args:
+            key: Metadata key (e.g., "last_updated")
+        
+        Returns:
+            Value or None if not found.
+        """
         with self._connect() as conn:
             cursor = conn.execute(
                 "SELECT value FROM metadata WHERE key = ?", (key,)

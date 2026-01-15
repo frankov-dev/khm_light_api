@@ -1,7 +1,7 @@
 fastapi
 uvicorn
-python-dotenv
-pydantic
 requests
 beautifulsoup4
-python-multipart
+tzdata
+pytest
+httpx

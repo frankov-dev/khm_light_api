@@ -3,11 +3,18 @@ Khmelnytskyi Outage API
 
 FastAPI application for power outage schedule monitoring.
 Data source: hoe.com.ua (Khmelnytskoblenergo)
+
+Usage:
+    python main.py              # Run server on port 8000
+    uvicorn main:app --reload   # Development with auto-reload
 """
 
+import logging
 import re
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
+from typing import Optional
+from zoneinfo import ZoneInfo
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
@@ -18,6 +25,90 @@ from fastapi.staticfiles import StaticFiles
 from app.db.database import Database
 from app.services.outage_service import OutageService
 
+# --- Constants ---
+
+KYIV_TZ = ZoneInfo("Europe/Kyiv")
+STATIC_DIR = Path(__file__).parent / "app" / "static"
+
+# --- Logging Configuration ---
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+
+# --- Utility Functions ---
+
+def get_kyiv_date() -> str:
+    """Get current date in Kyiv timezone (YYYY-MM-DD)."""
+    return datetime.now(KYIV_TZ).strftime("%Y-%m-%d")
+
+
+def validate_queue(queue: str) -> bool:
+    """
+    Validate queue format.
+    
+    Args:
+        queue: Queue identifier (expected format: "1.1" - "6.2")
+    
+    Returns:
+        True if queue format is valid.
+    """
+    return bool(re.match(r"^[1-6]\.[1-2]$", queue))
+
+
+def validate_date(date_str: str) -> bool:
+    """
+    Validate date format.
+    
+    Args:
+        date_str: Date string (expected format: YYYY-MM-DD)
+    
+    Returns:
+        True if date format is valid.
+    """
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", date_str):
+        return False
+    try:
+        datetime.strptime(date_str, "%Y-%m-%d")
+        return True
+    except ValueError:
+        return False
+
+
+def calculate_hours(intervals: list[dict]) -> float:
+    """
+    Calculate total outage hours from intervals.
+    
+    Args:
+        intervals: List of dicts with start_time/start and end_time/end keys.
+    
+    Returns:
+        Total hours as float (e.g., 5.5 for 5 hours 30 minutes).
+    """
+    total_minutes = 0
+    for interval in intervals:
+        try:
+            start_str = interval.get("start_time") or interval.get("start")
+            end_str = interval.get("end_time") or interval.get("end")
+            start = datetime.strptime(start_str, "%H:%M")
+            end = datetime.strptime(end_str, "%H:%M")
+            
+            # Handle overnight intervals (e.g., 23:00 to 02:00)
+            if end > start:
+                diff_minutes = (end - start).seconds // 60
+            else:
+                diff_minutes = (24 * 60 - start.hour * 60 - start.minute 
+                               + end.hour * 60 + end.minute)
+            total_minutes += diff_minutes
+        except (ValueError, TypeError, AttributeError):
+            continue
+    
+    return round(total_minutes / 60, 1)
+
+
 # --- App Configuration ---
 
 app = FastAPI(
@@ -25,7 +116,7 @@ app = FastAPI(
     description="API для моніторингу графіків погодинних відключень електроенергії у Хмельницькому",
     version="1.0.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
 )
 
 # CORS - allow all origins for frontend/mobile integration
@@ -43,46 +134,15 @@ db = Database()
 service = OutageService(db)
 
 # Static files for web UI
-STATIC_DIR = Path(__file__).parent / "app" / "static"
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
-# --- Utility Functions ---
-
-def validate_queue(queue: str) -> bool:
-    """Validate queue format (1.1 - 6.2)."""
-    return bool(re.match(r"^[1-6]\.[1-2]$", queue))
-
-
-def validate_date(date_str: str) -> bool:
-    """Validate date format (YYYY-MM-DD)."""
-    try:
-        datetime.strptime(date_str, "%Y-%m-%d")
-        return True
-    except ValueError:
-        return False
-
-
-def calculate_hours(intervals: list) -> float:
-    """Calculate total outage hours from intervals."""
-    total_minutes = 0
-    for i in intervals:
-        try:
-            start = datetime.strptime(i.get("start_time") or i.get("start"), "%H:%M")
-            end = datetime.strptime(i.get("end_time") or i.get("end"), "%H:%M")
-            diff = (end - start).seconds // 60 if end > start else (24 * 60 - start.hour * 60 - start.minute + end.hour * 60 + end.minute)
-            total_minutes += diff
-        except (ValueError, TypeError):
-            pass
-    return round(total_minutes / 60, 1)
-
-
 # --- API Endpoints ---
 
-@app.get("/")
+@app.get("/", response_model=None)
 def root():
-    """Web UI or API info."""
+    """Serve web UI or return API info."""
     html_file = STATIC_DIR / "index.html"
     if html_file.exists():
         return FileResponse(str(html_file))
@@ -90,28 +150,31 @@ def root():
 
 
 @app.get("/status")
-def health_check():
+def health_check() -> dict:
     """
     Health check endpoint.
     
-    Returns system status and last successful scrape time.
-    Useful for monitoring data freshness.
+    Returns:
+        System status, last scrape time, and available dates.
+        Useful for monitoring data freshness.
     """
     return {
         "status": "healthy",
         "last_scrape": db.get_metadata("last_updated"),
         "available_dates": db.get_dates(),
-        "total_queues": 12
+        "total_queues": 12,
     }
 
 
 @app.get("/update")
-def update_data():
+def update_data() -> dict:
     """
     Fetch and update schedules from hoe.com.ua.
     
     Scrapes the official website and updates the database.
-    Returns list of dates that were updated.
+    
+    Returns:
+        Status, list of updated dates, and last_updated timestamp.
     """
     try:
         result = service.update()
@@ -120,15 +183,16 @@ def update_data():
                 "status": "success",
                 "dates": result,
                 "message": f"Оновлено графіки для {len(result)} дат",
-                "last_updated": db.get_metadata("last_updated")
+                "last_updated": db.get_metadata("last_updated"),
             }
         return {"status": "error", "message": "Не вдалося отримати дані з сайту"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.exception("Error updating schedules")
+        return {"status": "error", "message": "Внутрішня помилка сервера"}
 
 
 @app.get("/schedule/{queue}")
-def get_schedule(queue: str, day: str = None):
+def get_schedule(queue: str, day: Optional[str] = None) -> dict:
     """
     Get outage schedule for a specific queue.
     
@@ -149,7 +213,7 @@ def get_schedule(queue: str, day: str = None):
     }
     ```
     """
-    target = day or date.today().strftime("%Y-%m-%d")
+    target = day or get_kyiv_date()
     
     if not validate_queue(queue):
         raise HTTPException(status_code=400, detail="Невірний формат черги. Використовуйте: 1.1 - 6.2")
@@ -198,7 +262,7 @@ def get_all_schedules(day: str = None):
     **Parameters:**
     - day: Date in YYYY-MM-DD format (optional, defaults to today)
     """
-    target = day or date.today().strftime("%Y-%m-%d")
+    target = day or get_kyiv_date()
     
     all_schedules = db.get_all_schedules(target)
     queues = {}
@@ -219,12 +283,17 @@ def get_all_schedules(day: str = None):
 
 
 @app.get("/dates")
-def get_dates():
+def get_dates() -> dict:
     """Get list of available dates in the database."""
     return {"dates": db.get_dates()}
 
 
 # --- Entry Point ---
 
-if __name__ == "__main__":
+def run() -> None:
+    """Run the API server (entry point for CLI)."""
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+
+if __name__ == "__main__":
+    run()

@@ -5,22 +5,32 @@ Extracts schedule blocks with dates from the official Khmelnytskoblenergo websit
 Uses image alt attributes (e.g., "ГПВ-15.01.26") for reliable date detection.
 """
 
+import logging
 import re
-import requests
-from bs4 import BeautifulSoup
 from typing import Optional
+
+import requests
+from bs4 import BeautifulSoup, Tag
+
+logger = logging.getLogger(__name__)
 
 
 class Scraper:
     """
     Scraper for hoe.com.ua outage schedules page.
     
-    The page structure:
-        [operational changes] - BEFORE the image
+    Page structure:
+        [operational changes] - BEFORE the image (extras)
         <img alt="ГПВ-DD.MM.YY"> - date marker
         <ul>base schedule</ul>
-        <hr> - separator
+        <hr> - separator between days
         [next day's content]
+    
+    Attributes:
+        URL: Target page URL
+        HEADERS: HTTP headers for requests
+        TIMEOUT: Request timeout in seconds
+        DATE_PATTERN: Regex for extracting date from image alt
     """
     
     URL = "https://hoe.com.ua/page/pogodinni-vidkljuchennja"
@@ -31,21 +41,32 @@ class Scraper:
     DATE_PATTERN = re.compile(r'ГПВ-(\d{2})\.(\d{2})\.(\d{2,4})')
     
     def fetch(self) -> Optional[str]:
-        """Fetch HTML content from the website."""
+        """
+        Fetch HTML content from the website.
+        
+        Returns:
+            HTML content as string, or None if request failed.
+        """
         try:
             response = requests.get(self.URL, headers=self.HEADERS, timeout=self.TIMEOUT)
             response.raise_for_status()
+            logger.info(f"Successfully fetched page ({len(response.text)} bytes)")
             return response.text
         except requests.RequestException as e:
-            print(f"[Scraper] Error fetching page: {e}")
+            logger.error(f"Error fetching page: {e}")
             return None
     
-    def extract_blocks(self, html: str) -> list:
+    def extract_blocks(self, html: str) -> list[dict]:
         """
         Extract schedule blocks from HTML.
         
+        Each block contains a date, base schedule, and optional extras (changes).
+        
+        Args:
+            html: Raw HTML content
+        
         Returns:
-            List of dicts: [{"date": "YYYY-MM-DD", "schedule_text": "...", "extras_text": "..."}]
+            List of dicts with keys: date, schedule_text, extras_text
         """
         soup = BeautifulSoup(html, "html.parser")
         content = soup.find("div", class_="post") or soup.find("article")
