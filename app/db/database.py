@@ -1,98 +1,185 @@
-# app/db/database.py
+"""
+Database module for Khmelnytskyi Outage API.
+
+Manages SQLite database with outage schedules and operational messages.
+Uses separate connection per request for thread-safety with FastAPI.
+"""
+
 import sqlite3
 from datetime import datetime
+from typing import Optional
 
-class DatabaseHandler:
-    def __init__(self, db_path="outages.db"):
+
+class Database:
+    """
+    SQLite database handler for outage schedules.
+    
+    Tables:
+        - queues: Queue names (1.1 - 6.2)
+        - schedules: Outage intervals per queue/date
+        - daily_messages: Operational messages per date (general, not per-queue)
+        - metadata: System metadata (last_updated, etc.)
+    """
+    
+    def __init__(self, db_path: str = "outages.db"):
         self.db_path = db_path
         self._init_db()
-
-    def _get_connection(self):
-        # В SQLite з'єднання краще створювати для кожного запиту в багатопотоковому FastAPI
+    
+    def _connect(self) -> sqlite3.Connection:
+        """Create a new connection (thread-safe for FastAPI)."""
         conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row # Щоб отримувати дані як словники
+        conn.row_factory = sqlite3.Row
         return conn
-
-    def _init_db(self):
-        """Створює таблиці, якщо їх немає"""
-        with self._get_connection() as conn:
-            conn.execute("""
+    
+    def _init_db(self) -> None:
+        """Initialize database schema."""
+        with self._connect() as conn:
+            conn.executescript("""
+                -- Queue names dictionary (1.1 - 6.2)
                 CREATE TABLE IF NOT EXISTS queues (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT UNIQUE
-                )
-            """)
-            conn.execute("""
+                    name TEXT UNIQUE NOT NULL
+                );
+                
+                -- Outage intervals
                 CREATE TABLE IF NOT EXISTS schedules (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    queue_id INTEGER,
-                    day_date TEXT,
-                    start_time TEXT,
-                    end_time TEXT,
-                    type TEXT,
-                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    queue_id INTEGER NOT NULL,
+                    day_date TEXT NOT NULL,
+                    start_time TEXT NOT NULL,
+                    end_time TEXT NOT NULL,
+                    type TEXT DEFAULT 'base',
                     FOREIGN KEY (queue_id) REFERENCES queues(id)
-                )
+                );
+                
+                -- Operational messages (one per date, for all queues)
+                CREATE TABLE IF NOT EXISTS daily_messages (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    day_date TEXT UNIQUE NOT NULL,
+                    message TEXT NOT NULL
+                );
+                
+                -- System metadata
+                CREATE TABLE IF NOT EXISTS metadata (
+                    key TEXT PRIMARY KEY,
+                    value TEXT
+                );
+                
+                -- Indexes for fast lookups
+                CREATE INDEX IF NOT EXISTS idx_schedules_date ON schedules(day_date);
+                CREATE INDEX IF NOT EXISTS idx_schedules_queue_date ON schedules(queue_id, day_date);
             """)
-            # Індекс для швидкого пошуку
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_schedules_date 
-                ON schedules(day_date)
-            """)
-            # Заповнюємо черги за замовчуванням
+            
+            # Seed default queues (1.1 - 6.2)
             queues = [f"{i}.{j}" for i in range(1, 7) for j in range(1, 3)]
-            conn.executemany("INSERT OR IGNORE INTO queues (name) VALUES (?)", [(q,) for q in queues])
+            conn.executemany(
+                "INSERT OR IGNORE INTO queues (name) VALUES (?)",
+                [(q,) for q in queues]
+            )
             conn.commit()
-
-    def save_data(self, data, target_date):
-        """Зберігає графік для дати"""
-        with self._get_connection() as conn:
-            # Видаляємо старі дані за цю дату
-            conn.execute("DELETE FROM schedules WHERE day_date = ?", (target_date,))
-            
-            query = """INSERT INTO schedules (queue_id, day_date, start_time, end_time, type) 
-                       VALUES ((SELECT id FROM queues WHERE name = ?), ?, ?, ?, ?)"""
-            
-            for q, intervals in data.items():
-                for i in intervals:
-                    conn.execute(query, (q, target_date, i['start'], i['end'], i['type']))
-            conn.commit()
-
-    def get_schedule(self, q_name, q_date):
-        """Отримує графік для черги на дату"""
-        with self._get_connection() as conn:
-            query = """SELECT start_time, end_time, type FROM schedules 
-                       JOIN queues ON schedules.queue_id = queues.id 
-                       WHERE queues.name = ? AND day_date = ?
-                       ORDER BY start_time"""
-            cursor = conn.execute(query, (q_name, q_date))
-            return [dict(row) for row in cursor.fetchall()]
-
-    def get_available_dates(self):
-        """Повертає список всіх дат, для яких є дані"""
-        with self._get_connection() as conn:
-            query = "SELECT DISTINCT day_date FROM schedules ORDER BY day_date DESC"
-            cursor = conn.execute(query)
-            return [row['day_date'] for row in cursor.fetchall()]
     
-    def get_all_schedules_for_date(self, q_date):
-        """Отримує всі графіки на дату"""
-        with self._get_connection() as conn:
-            query = """SELECT queues.name as queue, start_time, end_time, type 
-                       FROM schedules 
-                       JOIN queues ON schedules.queue_id = queues.id 
-                       WHERE day_date = ?
-                       ORDER BY queues.name, start_time"""
-            cursor = conn.execute(query, (q_date,))
+    def save_schedule(
+        self,
+        date: str,
+        schedules: dict,
+        message: Optional[str] = None
+    ) -> None:
+        """
+        Save schedule data for a specific date.
+        
+        Args:
+            date: Date in YYYY-MM-DD format
+            schedules: Dict {queue: [{"start": "HH:MM", "end": "HH:MM", "type": "base"}]}
+            message: Optional operational message for the date
+        """
+        with self._connect() as conn:
+            # Clear old data for this date
+            conn.execute("DELETE FROM schedules WHERE day_date = ?", (date,))
+            conn.execute("DELETE FROM daily_messages WHERE day_date = ?", (date,))
+            
+            # Insert schedules
+            for queue_name, intervals in schedules.items():
+                for interval in intervals:
+                    conn.execute(
+                        """INSERT INTO schedules (queue_id, day_date, start_time, end_time, type)
+                           VALUES ((SELECT id FROM queues WHERE name = ?), ?, ?, ?, ?)""",
+                        (queue_name, date, interval["start"], interval["end"], 
+                         interval.get("type", "base"))
+                    )
+            
+            # Insert operational message
+            if message and message.strip():
+                conn.execute(
+                    "INSERT INTO daily_messages (day_date, message) VALUES (?, ?)",
+                    (date, message.strip())
+                )
+            
+            # Update last_updated timestamp
+            conn.execute(
+                "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
+                ("last_updated", datetime.now().isoformat())
+            )
+            conn.commit()
+    
+    def get_schedule(self, queue: str, date: str) -> list:
+        """Get schedule intervals for a queue on a specific date."""
+        with self._connect() as conn:
+            cursor = conn.execute(
+                """SELECT start_time, end_time, type FROM schedules
+                   JOIN queues ON schedules.queue_id = queues.id
+                   WHERE queues.name = ? AND day_date = ?
+                   ORDER BY start_time""",
+                (queue, date)
+            )
+            return [dict(row) for row in cursor.fetchall()]
+    
+    def get_all_schedules(self, date: str) -> dict:
+        """Get all schedules for a specific date."""
+        with self._connect() as conn:
+            cursor = conn.execute(
+                """SELECT queues.name as queue, start_time, end_time, type
+                   FROM schedules
+                   JOIN queues ON schedules.queue_id = queues.id
+                   WHERE day_date = ?
+                   ORDER BY queues.name, start_time""",
+                (date,)
+            )
             
             result = {}
             for row in cursor.fetchall():
-                queue = row['queue']
+                queue = row["queue"]
                 if queue not in result:
                     result[queue] = []
                 result[queue].append({
-                    'start_time': row['start_time'],
-                    'end_time': row['end_time'],
-                    'type': row['type']
+                    "start_time": row["start_time"],
+                    "end_time": row["end_time"],
+                    "type": row["type"]
                 })
             return result
+    
+    def get_message(self, date: str) -> Optional[str]:
+        """Get operational message for a date."""
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "SELECT message FROM daily_messages WHERE day_date = ?",
+                (date,)
+            )
+            row = cursor.fetchone()
+            return row["message"] if row else None
+    
+    def get_dates(self) -> list:
+        """Get list of available dates."""
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "SELECT DISTINCT day_date FROM schedules ORDER BY day_date DESC"
+            )
+            return [row["day_date"] for row in cursor.fetchall()]
+    
+    def get_metadata(self, key: str) -> Optional[str]:
+        """Get metadata value by key."""
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "SELECT value FROM metadata WHERE key = ?", (key,)
+            )
+            row = cursor.fetchone()
+            return row["value"] if row else None

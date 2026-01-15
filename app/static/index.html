@@ -3,43 +3,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Моніторинг відключень - Хмельницький</title>
+    <title>Графік відключень - Хмельницький</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             padding: 20px;
         }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-
+        
+        .container { max-width: 1200px; margin: 0 auto; }
+        
         header {
             text-align: center;
             color: white;
             margin-bottom: 30px;
         }
-
         header h1 {
             font-size: 2.5em;
             margin-bottom: 10px;
             text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
         }
-
-        header p {
-            font-size: 1.1em;
-            opacity: 0.9;
-        }
-
+        header p { font-size: 1.1em; opacity: 0.9; }
+        
         .controls {
             background: white;
             border-radius: 10px;
@@ -51,20 +39,13 @@
             flex-wrap: wrap;
             align-items: center;
         }
-
-        .controls input,
-        .controls select,
-        .controls button {
+        .controls input, .controls select, .controls button {
             padding: 10px 15px;
             border: 1px solid #ddd;
             border-radius: 5px;
             font-size: 1em;
         }
-
-        .controls select {
-            min-width: 150px;
-        }
-
+        .controls select { min-width: 150px; }
         .controls button {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
@@ -73,79 +54,70 @@
             font-weight: 600;
             transition: transform 0.2s, box-shadow 0.2s;
         }
-
         .controls button:hover {
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
         }
-
-        .controls button:active {
-            transform: translateY(0);
-        }
-
-        .btn-update {
-            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-        }
-
-        .btn-update:hover {
-            box-shadow: 0 4px 12px rgba(245, 87, 108, 0.4);
-        }
-
+        .btn-update { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
+        .btn-update:hover { box-shadow: 0 4px 12px rgba(245, 87, 108, 0.4); }
+        
         .status {
             padding: 15px;
             border-radius: 5px;
             margin-bottom: 20px;
             display: none;
         }
-
-        .status.success {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-            display: block;
+        .status.success { background: #d4edda; color: #155724; display: block; }
+        .status.error { background: #f8d7da; color: #721c24; display: block; }
+        .status.info { background: #d1ecf1; color: #0c5460; display: block; }
+        
+        .system-status {
+            background: white;
+            border-radius: 10px;
+            padding: 15px 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
         }
-
-        .status.error {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-            display: block;
+        .status-indicator { display: flex; align-items: center; gap: 8px; }
+        .status-dot {
+            width: 10px; height: 10px;
+            border-radius: 50%;
+            background: #4caf50;
         }
-
-        .status.info {
-            background: #d1ecf1;
-            color: #0c5460;
-            border: 1px solid #bee5eb;
-            display: block;
+        .status-dot.warning { background: #ff9800; }
+        .last-update { color: #666; font-size: 0.9em; }
+        
+        .operational-alert {
+            background: #fff3e0;
+            border-left: 4px solid #ff9800;
+            border-radius: 0 10px 10px 0;
+            padding: 15px 20px;
+            margin-bottom: 20px;
+            color: #e65100;
         }
-
-        .loading {
-            text-align: center;
-            padding: 40px;
-            display: none;
-        }
-
+        .operational-alert h4 { margin-bottom: 8px; }
+        
+        .loading { text-align: center; padding: 40px; display: none; }
         .spinner {
             border: 4px solid rgba(255,255,255,0.3);
             border-top: 4px solid white;
             border-radius: 50%;
-            width: 40px;
-            height: 40px;
+            width: 40px; height: 40px;
             animation: spin 1s linear infinite;
             margin: 0 auto 20px;
         }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        
         .schedules {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
             gap: 20px;
         }
-
         .schedule-card {
             background: white;
             border-radius: 10px;
@@ -153,79 +125,56 @@
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
             transition: transform 0.2s, box-shadow 0.2s;
         }
-
         .schedule-card:hover {
             transform: translateY(-4px);
             box-shadow: 0 8px 12px rgba(0,0,0,0.15);
         }
-
         .schedule-card h3 {
             color: #667eea;
             margin-bottom: 15px;
-            font-size: 1.3em;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 10px;
         }
-
         .queue-badge {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            padding: 5px 10px;
+            padding: 5px 12px;
             border-radius: 5px;
             font-weight: 600;
         }
-
-        .date-badge {
-            background: #f5f5f5;
-            color: #666;
-            padding: 5px 10px;
-            border-radius: 5px;
-            font-size: 0.9em;
+        .hours-badge {
+            background: #e3f2fd;
+            color: #1976d2;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+            margin-left: auto;
         }
-
-        .intervals-list {
-            list-style: none;
-        }
-
+        .intervals-list { list-style: none; }
         .intervals-list li {
-            padding: 10px;
+            padding: 10px 12px;
             margin: 8px 0;
             background: #f9f9f9;
             border-left: 4px solid #667eea;
             border-radius: 3px;
-            font-size: 0.95em;
-        }
-
-        .time {
             font-weight: 600;
             color: #667eea;
         }
-
-        .type-base {
+        .no-outage {
             color: #28a745;
+            border-left-color: #28a745;
         }
-
-        .type-extra {
-            color: #ffc107;
-        }
-
-        .type-change {
-            color: #dc3545;
-        }
-
+        
         .empty-state {
             grid-column: 1 / -1;
             text-align: center;
             padding: 60px 20px;
             color: white;
         }
-
-        .empty-state h2 {
-            font-size: 2em;
-            margin-bottom: 10px;
-        }
-
+        .empty-state h2 { font-size: 2em; margin-bottom: 10px; }
+        
         .footer {
             text-align: center;
             color: white;
@@ -233,26 +182,12 @@
             opacity: 0.8;
             font-size: 0.9em;
         }
-
+        
         @media (max-width: 768px) {
-            header h1 {
-                font-size: 1.8em;
-            }
-
-            .controls {
-                flex-direction: column;
-                align-items: stretch;
-            }
-
-            .controls input,
-            .controls select,
-            .controls button {
-                width: 100%;
-            }
-
-            .schedules {
-                grid-template-columns: 1fr;
-            }
+            header h1 { font-size: 1.8em; }
+            .controls { flex-direction: column; align-items: stretch; }
+            .controls input, .controls select, .controls button { width: 100%; }
+            .schedules { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -260,7 +195,7 @@
     <div class="container">
         <header>
             <h1>⚡ Графік відключень</h1>
-            <p>Хмельницький - Моніторинг електроენергії</p>
+            <p>Хмельницький — Погодинні відключення електроенергії</p>
         </header>
 
         <div class="controls">
@@ -279,60 +214,89 @@
                 <option value="6.1">Черга 6.1</option>
                 <option value="6.2">Черга 6.2</option>
             </select>
-
             <input type="date" id="dateInput">
-
             <button onclick="loadSchedules()">🔍 Пошук</button>
             <button class="btn-update" onclick="updateData()">🔄 Оновити дані</button>
         </div>
 
         <div id="status" class="status"></div>
+        
+        <div class="system-status" id="systemStatus">
+            <div class="status-indicator">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText">Перевірка з'єднання...</span>
+            </div>
+            <div class="last-update" id="lastUpdate"></div>
+        </div>
+
+        <div id="operationalAlert" class="operational-alert" style="display: none;">
+            <h4>⚠️ Оперативні зміни</h4>
+            <p id="operationalMessage"></p>
+        </div>
 
         <div class="loading" id="loading">
             <div class="spinner"></div>
-            <p>Завантажування даних...</p>
+            <p style="color: white;">Завантажування...</p>
         </div>
 
         <div class="schedules" id="schedules"></div>
 
         <div class="footer">
-            <p>💡 Натисніть "Оновити дані" щоб отримати найновіші графіки з сайту</p>
+            <p>Дані з офіційного сайту <a href="https://hoe.com.ua" target="_blank" style="color: white;">hoe.com.ua</a></p>
         </div>
     </div>
 
     <script>
-        const API_BASE = 'http://localhost:8000';
-
-        // Встановлюємо сьогоднішню дату за замовчуванням
+        const API_BASE = window.location.origin;
+        
         document.getElementById('dateInput').valueAsDate = new Date();
 
         function showStatus(message, type = 'info') {
-            const statusEl = document.getElementById('status');
-            statusEl.textContent = message;
-            statusEl.className = `status ${type}`;
-            setTimeout(() => {
-                statusEl.className = 'status';
-            }, 5000);
+            const el = document.getElementById('status');
+            el.textContent = message;
+            el.className = `status ${type}`;
+            setTimeout(() => el.className = 'status', 5000);
         }
 
-        function setLoading(isLoading) {
-            document.getElementById('loading').style.display = isLoading ? 'block' : 'none';
+        function setLoading(show) {
+            document.getElementById('loading').style.display = show ? 'block' : 'none';
+        }
+
+        async function checkSystemStatus() {
+            try {
+                const res = await fetch(`${API_BASE}/status`);
+                const data = await res.json();
+                
+                document.getElementById('statusDot').className = 'status-dot';
+                document.getElementById('statusText').textContent = 
+                    `Система працює • ${data.available_dates.length} дат в базі`;
+                
+                if (data.last_scrape) {
+                    const dt = new Date(data.last_scrape);
+                    document.getElementById('lastUpdate').textContent = 
+                        `Оновлено: ${dt.toLocaleString('uk-UA')}`;
+                }
+            } catch (e) {
+                document.getElementById('statusDot').className = 'status-dot warning';
+                document.getElementById('statusText').textContent = 'Немає з\'єднання з сервером';
+            }
         }
 
         async function updateData() {
             setLoading(true);
             try {
-                const response = await fetch(`${API_BASE}/update`);
-                const data = await response.json();
-
+                const res = await fetch(`${API_BASE}/update`);
+                const data = await res.json();
+                
                 if (data.status === 'success') {
                     showStatus(`✅ ${data.message}`, 'success');
+                    checkSystemStatus();
                     loadSchedules();
                 } else {
                     showStatus(`❌ ${data.message}`, 'error');
                 }
-            } catch (error) {
-                showStatus(`❌ Помилка: ${error.message}`, 'error');
+            } catch (e) {
+                showStatus(`❌ Помилка: ${e.message}`, 'error');
             } finally {
                 setLoading(false);
             }
@@ -343,112 +307,86 @@
             try {
                 const queue = document.getElementById('queueSelect').value;
                 const date = document.getElementById('dateInput').value;
-
-                let url = `${API_BASE}/all/${date}`;
-                if (queue) {
-                    url = `${API_BASE}/schedule/${queue}/${date}`;
-                }
-
-                const response = await fetch(url);
-                const data = await response.json();
-
+                
+                const url = queue 
+                    ? `${API_BASE}/schedule/${queue}/${date}`
+                    : `${API_BASE}/all/${date}`;
+                
+                const res = await fetch(url);
+                const data = await res.json();
+                
                 displaySchedules(data, date);
-                setLoading(false);
-            } catch (error) {
-                showStatus(`❌ Помилка при завантаженні: ${error.message}`, 'error');
+            } catch (e) {
+                showStatus(`❌ Помилка: ${e.message}`, 'error');
+            } finally {
                 setLoading(false);
             }
         }
 
         function displaySchedules(data, date) {
             const container = document.getElementById('schedules');
+            const alertEl = document.getElementById('operationalAlert');
             container.innerHTML = '';
+            
+            // Show operational message if exists
+            const message = data.operational_message;
+            if (message) {
+                document.getElementById('operationalMessage').textContent = message;
+                alertEl.style.display = 'block';
+            } else {
+                alertEl.style.display = 'none';
+            }
 
-            if (!data || (Object.keys(data).length === 0 && !data.queue)) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <h2>😴 Немає даних</h2>
-                        <p>Спробуйте оновити дані або вибрати іншу дату</p>
-                    </div>
-                `;
+            // Single queue response
+            if (data.queue && data.intervals !== undefined) {
+                displayCard(data.queue, data.intervals, data.total_hours_off, date);
                 return;
             }
-
-            // Якщо це один графік (result for single queue)
-            if (data.queue && data.intervals) {
-                displayCard(data, date);
-            } 
-            // Якщо це результат від /all/{date}
-            else if (data.queues) {
-                Object.entries(data.queues).forEach(([queue, schedule]) => {
-                    displayCard({
-                        queue: queue,
-                        intervals: schedule.intervals
-                    }, date);
-                });
-            }
-            // Старий формат - кілька графіків без обгортки
-            else {
-                Object.values(data).forEach(schedule => {
-                    if (schedule && schedule.intervals) {
-                        displayCard(schedule, date);
-                    }
+            
+            // All queues response
+            if (data.queues) {
+                const queues = Object.entries(data.queues);
+                if (queues.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <h2>😴 Немає даних</h2>
+                            <p>Спробуйте оновити дані або вибрати іншу дату</p>
+                        </div>`;
+                    return;
+                }
+                queues.sort((a, b) => a[0].localeCompare(b[0]));
+                queues.forEach(([queue, info]) => {
+                    displayCard(queue, info.intervals, info.total_hours_off, date);
                 });
             }
         }
 
-        function displayCard(schedule, date) {
+        function displayCard(queue, intervals, totalHours, date) {
             const container = document.getElementById('schedules');
             const card = document.createElement('div');
             card.className = 'schedule-card';
-
-            const intervals = schedule.intervals || [];
+            
             const intervalsHtml = intervals.length > 0
-                ? intervals.map(interval => {
-                    const start = interval.start || interval.start_time || '??:??';
-                    const end = interval.end || interval.end_time || '??:??';
-                    return `
-                    <li>
-                        <span class="time">${start} - ${end}</span>
-                        <span class="type-${interval.type}">(${getTypeLabel(interval.type)})</span>
-                    </li>
-                `;
-                }).join('')
-                : '<li style="color: #999;">Немає відключень на цей день</li>';
-
+                ? intervals.map(i => `<li>${i.start} - ${i.end}</li>`).join('')
+                : '<li class="no-outage">✅ Немає відключень</li>';
+            
             card.innerHTML = `
                 <h3>
-                    <span class="queue-badge">${schedule.queue}</span>
-                    <span class="date-badge">${formatDate(date)}</span>
+                    <span class="queue-badge">${queue}</span>
+                    <span class="hours-badge">⏱️ ${totalHours || 0} год</span>
                 </h3>
-                <ul class="intervals-list">
-                    ${intervalsHtml}
-                </ul>
+                <ul class="intervals-list">${intervalsHtml}</ul>
             `;
-
             container.appendChild(card);
         }
 
-        function getTypeLabel(type) {
-            const labels = {
-                'base': 'базовий',
-                'extra': 'додаткова',
-                'change': 'зміна'
-            };
-            return labels[type] || type;
-        }
-
-        function formatDate(dateStr) {
-            const date = new Date(dateStr);
-            const options = { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' };
-            return date.toLocaleDateString('uk-UA', options);
-        }
-
-        // Завантажуємо дані при завантаженні сторінки
-        window.addEventListener('load', loadSchedules);
-
-        // Дозволяємо завантаження при натисканні Enter в input
-        document.getElementById('dateInput').addEventListener('keypress', (e) => {
+        // Init
+        window.addEventListener('load', () => {
+            checkSystemStatus();
+            loadSchedules();
+        });
+        
+        document.getElementById('dateInput').addEventListener('keypress', e => {
             if (e.key === 'Enter') loadSchedules();
         });
     </script>

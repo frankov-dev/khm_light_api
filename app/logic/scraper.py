@@ -1,116 +1,120 @@
+"""
+Web scraper for hoe.com.ua power outage schedules.
+
+Extracts schedule blocks with dates from the official Khmelnytskoblenergo website.
+Uses image alt attributes (e.g., "ГПВ-15.01.26") for reliable date detection.
+"""
+
+import re
 import requests
 from bs4 import BeautifulSoup
-import re
+from typing import Optional
 
-class WebScraper:
-    def __init__(self):
-        self.url = "https://hoe.com.ua/page/pogodinni-vidkljuchennja"
-        self.headers = {"User-Agent": "Mozilla/5.0"}
 
-    def fetch_page(self):
-        """Завантажує HTML сторінки"""
+class Scraper:
+    """
+    Scraper for hoe.com.ua outage schedules page.
+    
+    The page structure:
+        [operational changes] - BEFORE the image
+        <img alt="ГПВ-DD.MM.YY"> - date marker
+        <ul>base schedule</ul>
+        <hr> - separator
+        [next day's content]
+    """
+    
+    URL = "https://hoe.com.ua/page/pogodinni-vidkljuchennja"
+    HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    TIMEOUT = 15
+    
+    # Regex for date extraction from image alt (e.g., "ГПВ-15.01.26")
+    DATE_PATTERN = re.compile(r'ГПВ-(\d{2})\.(\d{2})\.(\d{2,4})')
+    
+    def fetch(self) -> Optional[str]:
+        """Fetch HTML content from the website."""
         try:
-            res = requests.get(self.url, headers=self.headers, timeout=15)
-            res.raise_for_status()
-            return res.text
-        except Exception as e:
-            print(f"Помилка завантаження: {e}")
+            response = requests.get(self.URL, headers=self.HEADERS, timeout=self.TIMEOUT)
+            response.raise_for_status()
+            return response.text
+        except requests.RequestException as e:
+            print(f"[Scraper] Error fetching page: {e}")
             return None
-
-    def extract_schedule_blocks(self, html):
+    
+    def extract_blocks(self, html: str) -> list:
         """
-        Розбиває контент на блоки по датах.
-        Кожен блок містить дату та відповідний графік.
-        Дата витягується з alt атрибуту картинки (формат: ГПВ-15.01.26)
-        Повертає: [{"date": "2026-01-15", "schedule_text": "...", "extras_text": "..."}, ...]
-        """
-        soup = BeautifulSoup(html, 'html.parser')
+        Extract schedule blocks from HTML.
         
-        # Знаходимо основний контент
-        content = soup.find('div', class_='post') or soup.find('article')
+        Returns:
+            List of dicts: [{"date": "YYYY-MM-DD", "schedule_text": "...", "extras_text": "..."}]
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        content = soup.find("div", class_="post") or soup.find("article")
+        
         if not content:
             return []
-
-        date_pattern = re.compile(r'ГПВ-(\d{2})\.(\d{2})\.(\d{2,4})')
-        blocks = []
         
-        # Отримуємо всі елементи в порядку їх появи
-        all_elements = content.find_all(['img', 'ul', 'p', 'hr', 'h2', 'h3'])
+        elements = content.find_all(["img", "ul", "p", "hr", "h2", "h3"])
         
-        current_block = None
-        hr_count = 0  # Рахуємо hr теги після початку блоку
-        
-        for elem in all_elements:
-            if elem.name == 'img':
-                alt = elem.get('alt', '')
-                match = date_pattern.search(alt)
+        # Find all date-marked images
+        date_markers = []
+        for i, elem in enumerate(elements):
+            img = elem if elem.name == "img" else elem.find("img") if elem.name == "h2" else None
+            if img:
+                match = self.DATE_PATTERN.search(img.get("alt", ""))
                 if match:
-                    # Зберігаємо попередній блок, якщо є
-                    if current_block and current_block.get('schedule_text'):
-                        blocks.append(current_block)
-                    
-                    # Формуємо дату
                     day, month, year = match.groups()
-                    if len(year) == 2:
-                        year = f"20{year}"
-                    date_str = f"{year}-{month}-{day}"
-                    
-                    current_block = {
-                        "date": date_str,
-                        "schedule_text": "",
-                        "extras_text": ""
-                    }
-                    hr_count = 0
-            
-            elif elem.name == 'ul' and current_block:
-                # Це список з підчергами
-                text = elem.get_text(separator="\n", strip=True)
-                if 'підчерга' in text.lower():
-                    current_block['schedule_text'] += text + "\n"
-            
-            elif elem.name == 'p' and current_block:
-                text = elem.get_text(strip=True)
-                # Оперативні зміни (додаткові відключення, раніше, довше)
-                if any(kw in text.lower() for kw in ['додатково', 'раніше', 'довше', 'розпочнеться', 'триватиме']):
-                    current_block['extras_text'] += text + "\n"
-            
-            elif elem.name == 'hr' and current_block:
-                hr_count += 1
-                # Якщо вже був список з підчергами і це 2+ hr - завершуємо блок
-                # (перший hr після списку відділяє оперативні зміни, другий - наступний день)
-                if current_block.get('schedule_text') and hr_count >= 2:
-                    blocks.append(current_block)
-                    current_block = None
-                    hr_count = 0
-            
-            elif elem.name in ['h2', 'h3'] and current_block:
-                # Заголовки типу "Файли співставлення адрес" означають кінець графіків
-                text = elem.get_text(strip=True).lower()
-                if any(kw in text for kw in ['файли', 'архів', 'рем', 'городоцький', "кам'янець"]):
-                    if current_block.get('schedule_text'):
-                        blocks.append(current_block)
-                    current_block = None
+                    year = f"20{year}" if len(year) == 2 else year
+                    date_markers.append({"index": i, "date": f"{year}-{month}-{day}"})
         
-        # Додаємо останній блок
-        if current_block and current_block.get('schedule_text'):
-            blocks.append(current_block)
+        blocks = []
+        for idx, marker in enumerate(date_markers):
+            img_index = marker["index"]
+            date_str = marker["date"]
+            
+            # Find extras start (after previous hr or beginning)
+            extras_start = 0
+            if idx > 0:
+                prev_index = date_markers[idx - 1]["index"]
+                for j in range(prev_index + 1, img_index):
+                    if elements[j].name == "hr":
+                        extras_start = j + 1
+                        break
+            
+            # Find schedule end (next hr or next date image)
+            schedule_end = len(elements)
+            for j in range(img_index + 1, len(elements)):
+                elem = elements[j]
+                if elem.name == "hr":
+                    schedule_end = j
+                    break
+                img = elem if elem.name == "img" else elem.find("img") if elem.name == "h2" else None
+                if img and self.DATE_PATTERN.search(img.get("alt", "")):
+                    schedule_end = j
+                    break
+            
+            # Collect extras text (before image)
+            extras_text = ""
+            keywords = ["підчерг", "відключення", "знеструм", "раніше", "довше", "додатково", "укренерго"]
+            for j in range(extras_start, img_index):
+                if elements[j].name == "p":
+                    text = elements[j].get_text(strip=True)
+                    if not text.startswith("Електроенергія у підчерг"):
+                        if any(kw in text.lower() for kw in keywords):
+                            extras_text += text + "\n"
+            
+            # Collect schedule text (after image)
+            schedule_text = ""
+            for j in range(img_index + 1, schedule_end):
+                if elements[j].name == "ul":
+                    text = elements[j].get_text(separator="\n", strip=True)
+                    if "підчерга" in text.lower():
+                        schedule_text += text + "\n"
+            
+            if schedule_text:
+                blocks.append({
+                    "date": date_str,
+                    "schedule_text": schedule_text,
+                    "extras_text": extras_text.strip()
+                })
         
         return blocks
-
-    # Залишаємо старий метод для сумісності
-    def fetch_with_meta(self):
-        """Старий метод - для зворотної сумісності"""
-        html = self.fetch_page()
-        if not html:
-            return "", []
-        
-        soup = BeautifulSoup(html, 'html.parser')
-        content = soup.find('div', class_='post') or soup.find('article')
-        
-        if not content:
-            return "", []
-
-        alts = [img.get('alt', '') for img in content.find_all('img')]
-        text = content.get_text(separator="\n", strip=True)
-        
-        return text, alts
