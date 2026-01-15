@@ -29,6 +29,28 @@ python main.py
 
 Сервер буде доступний за адресою: http://localhost:8000
 
+## 🐳 Запуск через Docker
+
+```bash
+# Збірка образу
+docker build -t khm-outage .
+
+# Запуск контейнера
+docker run -p 8000:8000 -v $(pwd)/data:/app/data khm-outage
+```
+
+**Windows PowerShell:**
+```powershell
+docker run -p 8000:8000 -v ${PWD}/data:/app/data khm-outage
+```
+
+**Windows CMD:**
+```cmd
+docker run -p 8000:8000 -v %cd%/data:/app/data khm-outage
+```
+
+Контейнер автоматично налаштований на київський час (`Europe/Kyiv`).
+
 ### Розробка
 
 ```bash
