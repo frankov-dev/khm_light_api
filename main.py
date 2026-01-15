@@ -1,20 +1,42 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from app.services.outage_service import OutageService
 from app.db.database import DatabaseHandler
 from datetime import date, datetime
 import uvicorn
+from pathlib import Path
 
 app = FastAPI(
     title="Khmelnytskyi Outage API",
     description="API для моніторингу графіків погодинних відключень електроенергії",
     version="1.0.0"
 )
+
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 service = OutageService()
 db = DatabaseHandler()
 
+# Підключаємо статичні файли
+static_dir = Path(__file__).parent / "app" / "static"
+static_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
 @app.get("/")
 def root():
-    """Головна сторінка"""
+    """Головна сторінка API"""
+    from fastapi.responses import FileResponse
+    html_file = static_dir / "index.html"
+    if html_file.exists():
+        return FileResponse(str(html_file))
     return {
         "name": "Khmelnytskyi Outage Monitor",
         "endpoints": [
@@ -51,10 +73,12 @@ def get_queue_schedule(queue: str, day: str = None):
         raise HTTPException(status_code=400, detail="Невірний формат черги. Використовуйте: 1.1, 1.2, ... 6.2")
     
     data = db.get_schedule(queue, target_day)
+    # Нормалізуємо назви полів
+    normalized_data = [{"start": item["start_time"], "end": item["end_time"], "type": item["type"]} for item in data]
     return {
         "queue": queue, 
         "date": target_day, 
-        "intervals": data,
+        "intervals": normalized_data,
         "total_hours": _calculate_outage_hours(data)
     }
 
@@ -68,10 +92,12 @@ def get_queue_schedule_by_date(queue: str, day: str):
         raise HTTPException(status_code=400, detail="Невірний формат дати. Використовуйте: YYYY-MM-DD")
     
     data = db.get_schedule(queue, day)
+    # Нормалізуємо назви полів
+    normalized_data = [{"start": item["start_time"], "end": item["end_time"], "type": item["type"]} for item in data]
     return {
         "queue": queue, 
         "date": day, 
-        "intervals": data,
+        "intervals": normalized_data,
         "total_hours": _calculate_outage_hours(data)
     }
 
@@ -80,16 +106,16 @@ def get_all_schedules(day: str = None):
     """Повертає графіки для всіх черг на дату"""
     target_day = day or date.today().strftime('%Y-%m-%d')
     
-    queues = [f"{i}.{j}" for i in range(1, 7) for j in range(1, 3)]
+    all_schedules = db.get_all_schedules_for_date(target_day)
     result = {}
     
-    for q in queues:
-        intervals = db.get_schedule(q, target_day)
-        if intervals:
-            result[q] = {
-                "intervals": intervals,
-                "total_hours": _calculate_outage_hours(intervals)
-            }
+    for queue, intervals in all_schedules.items():
+        # Нормалізуємо назви полів
+        normalized_intervals = [{"start": item["start_time"], "end": item["end_time"], "type": item["type"]} for item in intervals]
+        result[queue] = {
+            "intervals": normalized_intervals,
+            "total_hours": _calculate_outage_hours(intervals)
+        }
     
     return {"date": target_day, "queues": result}
 
